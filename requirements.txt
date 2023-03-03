@@ -1,0 +1,4 @@
+scipy
+jax
+jaxlib
+control
