@@ -8,7 +8,7 @@ from control import lqr
 
 
 def A_matrix(parameters: Tuple, x_lin: jnp.ndarray):
-    g, m, l, b = parameters
+    g, m, l, b, dt = parameters
     return jnp.array([
         [0, 1],
         [-g / l * jnp.cos(x_lin[0]), -b / (m * l ** 2)]
@@ -16,7 +16,7 @@ def A_matrix(parameters: Tuple, x_lin: jnp.ndarray):
 
 
 def B_matrix(parameters: Tuple):
-    g, m, l, b = parameters
+    g, m, l, b, dt = parameters
     return jnp.array(
         [
             [0],
@@ -36,13 +36,14 @@ def K_matrix(A_jax: jnp.ndarray, B_jax: jnp.ndarray):
     return jnp.asarray(K)
 
 
-def build_f(parameters: Tuple):
-    g, m, l, b = parameters
+def build_f(parameters: Tuple, noise: jnp.ndarray):
+    g, m, l, b, dt = parameters
 
     def f(x, t, u):
+        tick = jnp.array(t/dt, int)
         return jnp.array([
             x[1],
-            -b / (m * l ** 2) * x[1] - g / l * jnp.sin(x[0]) + 1 / (m * l ** 2) * u[0]
-        ])
+            -b / (m * l ** 2) * x[1] - g / l * jnp.sin(x[0]) + 1 / (m * l ** 2) * u[tick]
+        ]) + noise[tick]
 
     return lambda x, t, u: f(x, t, u)
