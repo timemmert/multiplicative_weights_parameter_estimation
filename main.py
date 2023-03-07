@@ -5,11 +5,11 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import vmap
 from jax.experimental.ode import odeint
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+from candidate_response import control_pieces, control_using_candidate_error
 from constants import T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
     key_measurement_noise, measurement_noise_on, \
     n_horizons, noise_multiplier, ticks_end, use_ground_truth_control, \
@@ -20,8 +20,6 @@ from losses import loss_maximum_likelihood
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
 
 mpl.use('TkAgg')
-
-
 
 simulation_metadata = {
     "candidate_control_mode": {
@@ -41,6 +39,7 @@ simulation_metadata = {
     "T_end": T_end,
     "ticks_end": ticks_end
 }
+
 
 def system_from_parameters(parameters: Tuple):
     # Linearize around resting position
@@ -123,6 +122,7 @@ def main():
                 jnp.array([t, t + dt]),
                 u,
             )[-1, :]
+
             x_measure = x_measure.at[horizon_tick + 1].set(
                 x + noise_measurement[global_index]
             )
@@ -155,41 +155,6 @@ def main():
     plt.plot(x_real[:, 0])
     plt.show()
     return p, n
-
-
-def control_using_candidate_error(f_i, K_j, ts, x_goal, x_measure):
-    x_i = jnp.concatenate(
-        (
-            jnp.expand_dims(x_measure[0], axis=0),
-            jnp.zeros((horizon_length_ticks, dim_state,)),
-        )
-    )
-    for horizon_tick, t in enumerate(ts[:-1]):
-        e = x_goal - x_i[horizon_tick]
-        u_individual = K_j @ e  # Note: This still takes the control matrix of the chosen candidate
-        x_i = x_i.at[horizon_tick + 1].set(
-            odeint(
-                f_i,
-                x_i[horizon_tick],
-                jnp.array([t, t + dt]),
-                u_individual,
-            )[-1]
-        )
-    return x_i
-
-
-def control_pieces(f_i, ts, u, x_measure):
-    odeint_vec = vmap(lambda x_start_, ts_, u_: odeint(f_i, x_start_, ts_, u_, ))
-    u_map = jnp.expand_dims(u, axis=1)
-    ts_expanded = jnp.expand_dims(ts, axis=1)
-    t_tuples = jnp.concatenate((ts_expanded, dt + ts_expanded,), axis=1)[:-1]
-    x_i = jnp.concatenate(
-        (
-            jnp.expand_dims(x_measure[0], axis=0),
-            odeint_vec(x_measure[:-1], t_tuples, u_map)[:, -1, :],
-        )
-    )
-    return x_i
 
 
 p, n = main()
