@@ -10,38 +10,17 @@ from jax.experimental.ode import odeint
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+from constants import T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
+    key_measurement_noise, measurement_noise_on, \
+    n_horizons, noise_multiplier, ticks_end, use_ground_truth_control, \
+    use_individual_control, \
+    use_pieces_control
 from losses import loss_maximum_likelihood
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
 
 mpl.use('TkAgg')
 
-key_measurement_noise = jax.random.PRNGKey(1)
-dim_state = 2
-
-dt = 0.005
-
-T_end = 3
-ticks_end = int(T_end / dt)
-
-horizon_length = 0.01  # shorter horizon -> better performance but also more computational effort. Set to dt for no horizon
-horizon_length_ticks = int(horizon_length / dt)
-
-n_horizons = int(np.ceil(T_end / horizon_length))
-
-measurement_noise_on = False
-noise_multiplier = 0.01 if measurement_noise_on else 0
-cov_measurement = jnp.eye(dim_state) * noise_multiplier
-
-
-# Using ground truth control could be hard to realize in the real world since it needs to be transmitted to the estimator
-use_ground_truth_control = False
-use_individual_control = False
-use_pieces_control = True
-
-assert use_ground_truth_control + use_individual_control + use_pieces_control == 1
-
-loss = loss_maximum_likelihood
 
 
 simulation_metadata = {
@@ -154,43 +133,13 @@ def main():
         for i, candidate in enumerate(candidates):
             _, f_i = candidate
 
-            x_sim_start = x_measure[0]
+            u_horizon = u[horizon * horizon_length_ticks:(horizon + 1) * horizon_length_ticks]
             if use_ground_truth_control:
-                x_i = odeint(
-                    f_i,
-                    x_sim_start,
-                    ts,
-                    u,
-                )
+                x_i = odeint(f_i, x_measure[0], ts, u_horizon)
             elif use_pieces_control:
-                odeint_vec = vmap(lambda x_start_, ts_, u_: odeint(f_i, x_start_, ts_, u_, ))
-                u_map = jnp.expand_dims(u[horizon * horizon_length_ticks:(horizon + 1) * horizon_length_ticks], axis=1)
-                ts_expanded = jnp.expand_dims(ts, axis=1)
-                t_tuples = jnp.concatenate((ts_expanded, dt + ts_expanded,), axis=1)[:-1]
-                x_i = jnp.concatenate(
-                    (
-                        jnp.expand_dims(x_sim_start, axis=0),
-                        odeint_vec(x_measure[:-1], t_tuples, u_map)[:, -1, :],
-                    )
-                )
+                x_i = control_pieces(f_i, ts, u_horizon, x_measure)
             elif use_individual_control:
-                x_i = jnp.concatenate(
-                    (
-                        jnp.expand_dims(x_sim_start, axis=0),
-                        jnp.zeros((horizon_length_ticks, dim_state,)),
-                    )
-                )
-                for horizon_tick, t in enumerate(ts[:-1]):
-                    e = x_goal - x_i[horizon_tick]
-                    u_individual = K_j @ e  # Note: This still takes the control matrix of the chosen candidate
-                    x_i = x_i.at[horizon_tick + 1].set(
-                        odeint(
-                            f_i,
-                            x_i[horizon_tick],
-                            jnp.array([t, t + dt]),
-                            u_individual,
-                        )[-1]
-                    )
+                x_i = control_using_candidate_error(f_i, K_j, ts, x_goal, x_measure)
             else:
                 raise ValueError()
 
@@ -206,6 +155,41 @@ def main():
     plt.plot(x_real[:, 0])
     plt.show()
     return p, n
+
+
+def control_using_candidate_error(f_i, K_j, ts, x_goal, x_measure):
+    x_i = jnp.concatenate(
+        (
+            jnp.expand_dims(x_measure[0], axis=0),
+            jnp.zeros((horizon_length_ticks, dim_state,)),
+        )
+    )
+    for horizon_tick, t in enumerate(ts[:-1]):
+        e = x_goal - x_i[horizon_tick]
+        u_individual = K_j @ e  # Note: This still takes the control matrix of the chosen candidate
+        x_i = x_i.at[horizon_tick + 1].set(
+            odeint(
+                f_i,
+                x_i[horizon_tick],
+                jnp.array([t, t + dt]),
+                u_individual,
+            )[-1]
+        )
+    return x_i
+
+
+def control_pieces(f_i, ts, u, x_measure):
+    odeint_vec = vmap(lambda x_start_, ts_, u_: odeint(f_i, x_start_, ts_, u_, ))
+    u_map = jnp.expand_dims(u, axis=1)
+    ts_expanded = jnp.expand_dims(ts, axis=1)
+    t_tuples = jnp.concatenate((ts_expanded, dt + ts_expanded,), axis=1)[:-1]
+    x_i = jnp.concatenate(
+        (
+            jnp.expand_dims(x_measure[0], axis=0),
+            odeint_vec(x_measure[:-1], t_tuples, u_map)[:, -1, :],
+        )
+    )
+    return x_i
 
 
 p, n = main()
