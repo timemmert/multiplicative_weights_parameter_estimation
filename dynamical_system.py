@@ -27,7 +27,7 @@ def B_matrix(parameters: Tuple):
 
 def K_matrix(A_jax: jnp.ndarray, B_jax: jnp.ndarray):
     Q = np.zeros((2, 2,))
-    Q[0, 0] = 1
+    Q[0, 0] = 100
     Q[1, 1] = 1
     R = np.array([[1]])
     A = np.asarray(A_jax)
@@ -36,15 +36,24 @@ def K_matrix(A_jax: jnp.ndarray, B_jax: jnp.ndarray):
     return jnp.asarray(K)
 
 
-def build_f(parameters: Tuple, noise: jnp.ndarray):
+def build_f(parameters: Tuple):
     g, m, l, b, dt = parameters
 
     def f(x, t, u):
-        tick = jnp.array(t/dt, int)
+        tick = jnp.array(t / dt, int)
         return jnp.array([
             x[1],
             -b / (m * l ** 2) * x[1] - g / l * jnp.sin(x[0]) + 1 / (m * l ** 2) * u[tick]
         ])
-        # + noise[tick]
 
     return lambda x, t, u: f(x, t, u)
+
+
+def system_from_parameters(parameters: Tuple):
+    # Linearize around resting position
+    A = A_matrix(parameters, jnp.zeros(2))
+    B = B_matrix(parameters)
+
+    K = K_matrix(A_jax=A, B_jax=B)
+    f = build_f(parameters)
+    return K, f
