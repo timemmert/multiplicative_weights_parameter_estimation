@@ -44,6 +44,7 @@ def build_f(parameters: Tuple, noise: jnp.ndarray):
         return jnp.array([
             x[1],
             -b / (m * l ** 2) * x[1] - g / l * jnp.sin(x[0]) + 1 / (m * l ** 2) * u[tick]
-        ]) + noise[tick]
+        ])
+        # + noise[tick]
 
     return lambda x, t, u: f(x, t, u)
