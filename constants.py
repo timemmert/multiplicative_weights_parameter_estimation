@@ -17,8 +17,8 @@ horizon_length_ticks = int(horizon_length / dt)
 
 n_horizons = int(np.ceil(T_end / horizon_length))
 
-measurement_noise_on = False
-noise_multiplier = 0.01 if measurement_noise_on else 0
+measurement_noise_on = True
+noise_multiplier = 0.00001 if measurement_noise_on else 0
 cov_measurement = jnp.eye(dim_state) * noise_multiplier
 
 
@@ -30,3 +30,5 @@ use_pieces_control = True
 assert use_ground_truth_control + use_individual_control + use_pieces_control == 1
 
 loss = loss_maximum_likelihood
+
+Q_position = 100

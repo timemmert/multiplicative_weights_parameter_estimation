@@ -6,6 +6,8 @@ import jax.numpy as jnp
 import numpy as np
 from control import lqr
 
+from constants import Q_position
+
 
 def A_matrix(parameters: Tuple, x_lin: jnp.ndarray):
     g, m, l, b, dt = parameters
@@ -27,7 +29,7 @@ def B_matrix(parameters: Tuple):
 
 def K_matrix(A_jax: jnp.ndarray, B_jax: jnp.ndarray):
     Q = np.zeros((2, 2,))
-    Q[0, 0] = 100
+    Q[0, 0] = Q_position
     Q[1, 1] = 1
     R = np.array([[1]])
     A = np.asarray(A_jax)

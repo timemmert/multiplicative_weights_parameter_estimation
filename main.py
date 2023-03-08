@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from candidate_response import control_pieces, control_using_candidate_error
-from constants import T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
+from constants import Q_position, T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
     key_measurement_noise, measurement_noise_on, \
     n_horizons, noise_multiplier, ticks_end, use_ground_truth_control, \
     use_individual_control, \
@@ -52,7 +52,8 @@ def system_from_parameters(parameters: Tuple):
 
 
 def main():
-    x_real = jnp.empty((0, dim_state))
+    x_real = np.zeros((ticks_end + 1, dim_state,))
+    u = np.zeros((ticks_end,))
 
     x = jnp.array([3.14, 0.])
     x_goal = jnp.array([0, 0])
@@ -84,7 +85,6 @@ def main():
 
     noise_measurement = jnp.zeros((ticks_end,)) if not measurement_noise_on else jax.random.multivariate_normal(
         key=key_measurement_noise, mean=jnp.zeros((dim_state,)), cov=cov_measurement, shape=(ticks_end,))
-    u = np.zeros((ticks_end,))
     for horizon in range(n_horizons):
         print(horizon)
         # Choose candidate of this horizon step
@@ -110,8 +110,9 @@ def main():
         n_r = np.zeros((n, horizon_length_ticks + 1, dim_state,))
 
         # during this horizon, the same model is used
+        horizon_offset = horizon * horizon_length_ticks
         for horizon_tick, t in enumerate(ts[:-1]):
-            global_index = horizon_tick + horizon * horizon_length_ticks
+            global_index = horizon_tick + horizon_offset
             e = x_goal - x
             u[global_index] = K_j @ e
 
@@ -126,9 +127,7 @@ def main():
             x_measure = x_measure.at[horizon_tick + 1].set(
                 x + noise_measurement[global_index]
             )
-            x_real = jnp.concatenate(
-                (x_real, x.reshape(1, -1)),
-            )
+            x_real[global_index] = x
 
         for i, candidate in enumerate(candidates):
             _, f_i = candidate
@@ -160,9 +159,9 @@ def main():
 p, n = main()
 print(p)
 plt.bar(np.arange(0, n, 1), p)
-plt.title(f"T={T_end}, dt={dt}, horizon={horizon_length}, meas_noise={noise_multiplier}")
-plt.show()
+plt.title(f"T={T_end}, dt={dt}, horizon={horizon_length}, meas_noise={noise_multiplier}, Q_position={Q_position}")
 time_syst = time.time()
-plt.savefig("plots/" + str(time_syst) + ".png")
+plt.savefig("plots/" + str(time_syst) + ".jpg")
+plt.show()
 with open("plots/" + str(time_syst) + ".json", "w") as fp:
     json.dump(simulation_metadata, fp)
