@@ -2,39 +2,34 @@ from jax import vmap
 from jax.experimental.ode import odeint
 import jax.numpy as jnp
 
-from constants import dim_state, dt, horizon_length_ticks
+from constants import dim_state, dt
 
 
-def control_using_candidate_error(f_i, K_j, ts, x_goal, x_measure):
-    x_i = jnp.concatenate(
-        (
-            jnp.expand_dims(x_measure[0], axis=0),
-            jnp.zeros((horizon_length_ticks, dim_state,)),
-        )
-    )
+def simulate_controlled_system(K, f, ts, x_goal, x_start):
+    x = jnp.zeros((len(ts), dim_state))
+    x = x.at[0].set(x_start)
+    u = jnp.zeros((len(ts) - 1, 1,))
     for horizon_tick, t in enumerate(ts[:-1]):
-        e = x_goal - x_i[horizon_tick]
-        u_individual = K_j @ e  # Note: This still takes the control matrix of the chosen candidate
-        x_i = x_i.at[horizon_tick + 1].set(
-            odeint(
-                f_i,
-                x_i[horizon_tick],
-                jnp.array([t, t + dt]),
-                u_individual,
-            )[-1]
-        )
-    return x_i
+        e = x_goal - x[horizon_tick]
+        u = u.at[horizon_tick].set(K @ e)
+
+        x = x.at[horizon_tick + 1].set(odeint(
+            f,
+            x[horizon_tick],
+            jnp.array([t, t + dt]),
+            u[horizon_tick],
+        )[-1])
+    return x, u
 
 
 def control_pieces(f_i, ts, u, x_measure):
     odeint_vec = vmap(lambda x_start_, ts_, u_: odeint(f_i, x_start_, ts_, u_, ))
-    u_map = jnp.expand_dims(u, axis=1)
     ts_expanded = jnp.expand_dims(ts, axis=1)
     t_tuples = jnp.concatenate((ts_expanded, dt + ts_expanded,), axis=1)[:-1]
     x_i = jnp.concatenate(
         (
             jnp.expand_dims(x_measure[0], axis=0),
-            odeint_vec(x_measure[:-1], t_tuples, u_map)[:, -1, :],
+            odeint_vec(x_measure[:-1], t_tuples, u)[:, -1, :],
         )
     )
     return x_i

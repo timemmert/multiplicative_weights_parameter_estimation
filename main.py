@@ -9,7 +9,7 @@ from jax.experimental.ode import odeint
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from candidate_response import control_pieces, control_using_candidate_error
+from candidate_response import control_pieces, simulate_controlled_system
 from constants import Q_position, T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
     key_measurement_noise, measurement_noise_on, \
     n_horizons, noise_multiplier, ticks_end, use_ground_truth_control, \
@@ -52,10 +52,10 @@ def system_from_parameters(parameters: Tuple):
 
 
 def main():
-    x_real = np.zeros((ticks_end + 1, dim_state,))
-    u = np.zeros((ticks_end,))
+    x = np.zeros((ticks_end + 1, dim_state,))
+    u = np.zeros((ticks_end, 1,))
 
-    x = jnp.array([3.14, 0.])
+    x[0] = jnp.array([3.14, 0.])
     x_goal = jnp.array([0, 0])
 
     # True parameters
@@ -84,7 +84,7 @@ def main():
     epsilon = jnp.sqrt(8 * jnp.log(n) / ticks_end)
 
     noise_measurement = jnp.zeros((ticks_end,)) if not measurement_noise_on else jax.random.multivariate_normal(
-        key=key_measurement_noise, mean=jnp.zeros((dim_state,)), cov=cov_measurement, shape=(ticks_end,))
+        key=key_measurement_noise, mean=jnp.zeros((dim_state,)), cov=cov_measurement, shape=(ticks_end + 1,))
     for horizon in range(n_horizons):
         print(horizon)
         # Choose candidate of this horizon step
@@ -100,45 +100,26 @@ def main():
             num=horizon_length_ticks + 1
         )
 
-        x_measure = jnp.concatenate(
-            (
-                jnp.expand_dims(x, axis=0),
-                jnp.zeros((horizon_length_ticks, dim_state,))
-            )
-        )
-
         n_r = np.zeros((n, horizon_length_ticks + 1, dim_state,))
 
         # during this horizon, the same model is used
         horizon_offset = horizon * horizon_length_ticks
-        for horizon_tick, t in enumerate(ts[:-1]):
-            global_index = horizon_tick + horizon_offset
-            e = x_goal - x
-            u[global_index] = K_j @ e
 
-            # Simulate the real (noisy) system
-            x = odeint(
-                f_true,
-                x,
-                jnp.array([t, t + dt]),
-                u,
-            )[-1, :]
+        x_start = x[horizon_offset]
+        x_horizon, u_horizon = simulate_controlled_system(K_j, f_true, ts, x_goal, x_start)
+        x[horizon_offset:((horizon + 1) * horizon_length_ticks) + 1] = x_horizon
 
-            x_measure = x_measure.at[horizon_tick + 1].set(
-                x + noise_measurement[global_index]
-            )
-            x_real[global_index] = x
+        x_measure = x_horizon + noise_measurement[horizon_offset:((horizon + 1) * horizon_length_ticks)+1]
 
         for i, candidate in enumerate(candidates):
             _, f_i = candidate
 
-            u_horizon = u[horizon * horizon_length_ticks:(horizon + 1) * horizon_length_ticks]
             if use_ground_truth_control:
                 x_i = odeint(f_i, x_measure[0], ts, u_horizon)
             elif use_pieces_control:
                 x_i = control_pieces(f_i, ts, u_horizon, x_measure)
             elif use_individual_control:
-                x_i = control_using_candidate_error(f_i, K_j, ts, x_goal, x_measure)
+                x_i = simulate_controlled_system(K_j, f_i, ts, x_goal, x_measure[0])
             else:
                 raise ValueError()
 
@@ -151,7 +132,7 @@ def main():
         w *= jnp.exp(- epsilon * l)
         p = np.asarray(w / jnp.sum(w))
 
-    plt.plot(x_real[:, 0])
+    plt.plot(x[:, 0])
     plt.show()
     return p, n
 
