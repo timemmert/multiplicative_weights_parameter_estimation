@@ -86,8 +86,6 @@ def main():
         key=key_measurement_noise, mean=jnp.zeros((dim_state,)), cov=cov_measurement, shape=(ticks_end + 1,))
     for horizon in range(n_horizons):
         print(horizon)
-        K_j = K_true
-
         ts = jnp.linspace(
             start=horizon * horizon_length_ticks * dt,
             stop=(horizon + 1) * horizon_length_ticks * dt,
@@ -99,13 +97,12 @@ def main():
         # during this horizon, the same model is used
         horizon_offset = horizon * horizon_length_ticks
 
-        x_start = x[horizon_offset]
         x_horizon, u_horizon = simulate_controlled_system(
-            K_j,
+            K_true,
             f_true,
             ts,
             x_goal,
-            x_start,
+            x[horizon_offset],
             perturbation=perturbation[horizon_offset:(horizon + 1) * horizon_length_ticks]
         )
 
