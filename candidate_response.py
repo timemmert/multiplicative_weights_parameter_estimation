@@ -1,3 +1,4 @@
+import jax
 from jax import vmap
 from jax.experimental.ode import odeint
 import jax.numpy as jnp
@@ -5,7 +6,9 @@ import jax.numpy as jnp
 from constants import dim_state, dt
 
 
-def simulate_controlled_system(K, f, ts, x_goal, x_start):
+def simulate_controlled_system(K, f, ts, x_goal, x_start, perturbation=None):
+    if perturbation is None:
+        perturbation = jnp.zeros((len(ts) - 1,))
     x = jnp.zeros((len(ts), dim_state))
     x = x.at[0].set(x_start)
     u = jnp.zeros((len(ts) - 1, 1,))
@@ -18,7 +21,7 @@ def simulate_controlled_system(K, f, ts, x_goal, x_start):
             x[horizon_tick],
             jnp.array([t, t + dt]),
             u[horizon_tick],
-        )[-1])
+        )[-1] + perturbation[horizon_tick])
     return x, u
 
 
