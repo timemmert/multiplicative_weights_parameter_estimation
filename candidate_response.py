@@ -1,4 +1,3 @@
-import jax
 from jax import vmap
 from jax.experimental.ode import odeint
 import jax.numpy as jnp
