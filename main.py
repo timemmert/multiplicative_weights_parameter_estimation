@@ -5,27 +5,19 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax.experimental.ode import odeint
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from candidate_response import control_pieces, simulate_controlled_system
 from constants import Q_position, T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
     key_measurement_noise, linearize_around, loss, measurement_noise_on, \
-    n_horizons, noise_multiplier, perturbation, ticks_end, use_ground_truth_control, \
-    use_individual_control, \
-    use_pieces_control, x_0, x_goal
+    minus_goal, n_horizons, noise_multiplier, perturbation, plus_goal, ticks_end, x_0
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
 
 mpl.use('TkAgg')
 
 simulation_metadata = {
-    "candidate_control_mode": {
-        "use_ground_truth_control": use_ground_truth_control,
-        "use_individual_control": use_individual_control,
-        "use_pieces_control": use_pieces_control,
-    },
     "measurement": {
         "measurement_covariance": cov_measurement.tolist(),
         "measurement_noise_on": measurement_noise_on,
@@ -54,7 +46,9 @@ def main():
     x = np.zeros((ticks_end + 1, dim_state,))
 
     x[0] = x_0
+    x_goal = plus_goal
 
+    epsilon_goal_reached = 0.1
     # True parameters
     g = 9.81
     m = 1
@@ -82,7 +76,8 @@ def main():
     w = jnp.ones((n,))
     epsilon = jnp.sqrt(8 * jnp.log(n) / ticks_end)
 
-    noise_measurement = jnp.zeros((ticks_end + 1, dim_state,)) if not measurement_noise_on else jax.random.multivariate_normal(
+    noise_measurement = jnp.zeros(
+        (ticks_end + 1, dim_state,)) if not measurement_noise_on else jax.random.multivariate_normal(
         key=key_measurement_noise, mean=jnp.zeros((dim_state,)), cov=cov_measurement, shape=(ticks_end + 1,))
     for horizon in range(n_horizons):
         print(horizon)
@@ -91,12 +86,15 @@ def main():
             stop=(horizon + 1) * horizon_length_ticks * dt,
             num=horizon_length_ticks + 1
         )
-
         n_r = np.zeros((n, horizon_length_ticks, dim_state,))
 
-        # during this horizon, the same model is used
         horizon_offset = horizon * horizon_length_ticks
 
+        if abs(x_goal[0] - x[horizon_offset, 0]) < epsilon_goal_reached:
+            if jnp.array_equal(x_goal, plus_goal):
+                x_goal = minus_goal
+            else:
+                x_goal = plus_goal
         x_horizon, u_horizon = simulate_controlled_system(
             K_true,
             f_true,
@@ -120,6 +118,8 @@ def main():
         w *= jnp.exp(- epsilon * l)
         p = np.asarray(w / jnp.sum(w))
 
+    plt.plot(x[:, 0])
+    plt.show()
     return p, n
 
 

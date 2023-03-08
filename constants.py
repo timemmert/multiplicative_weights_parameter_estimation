@@ -11,10 +11,14 @@ dim_state = 2
 dt = 0.01
 
 x_0 = jnp.array([2.5, 0.])
-x_goal = jnp.array([jnp.pi, 0])
+
+plus_goal = jnp.array([jnp.pi + 0.3, 0])
+minus_goal = jnp.array([jnp.pi - 0.3, 0])
+
+
 linearize_around = jnp.array([jnp.pi, 0.])
 
-T_end = 3
+T_end = 30
 ticks_end = int(T_end / dt)
 
 horizon_length = .01  # shorter horizon -> better performance but also more computational effort. Set to dt for no horizon
@@ -32,7 +36,7 @@ cov_perturbation = jnp.eye(dim_state) * perturbation_multiplier
 
 loss = loss_squared
 
-Q_position = 1
+Q_position = 100
 
 
 perturbation = jax.random.multivariate_normal(
