@@ -2,10 +2,10 @@ from jax import vmap
 from jax.experimental.ode import odeint
 import jax.numpy as jnp
 
-from constants import dim_state, dt
+from constants import dim_state
 
 
-def simulate_controlled_system(K, f, ts, x_goal, x_start, perturbation=None):
+def simulate_controlled_system(K, f, ts, x_goal, x_start, dt, perturbation=None):
     if perturbation is None:
         perturbation = jnp.zeros((len(ts) - 1,))
     x = jnp.zeros((len(ts), dim_state))
@@ -24,7 +24,7 @@ def simulate_controlled_system(K, f, ts, x_goal, x_start, perturbation=None):
     return x, u
 
 
-def control_pieces(f_i, ts, u, x_measure):
+def control_pieces(f_i, ts, u, x_measure, dt):
     odeint_vec = vmap(lambda x_start_, ts_, u_: odeint(f_i, x_start_, ts_, u_, ))
     ts_expanded = jnp.expand_dims(ts, axis=1)
     t_tuples = jnp.concatenate((ts_expanded, dt + ts_expanded,), axis=1)[:-1]

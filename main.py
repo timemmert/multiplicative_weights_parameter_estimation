@@ -1,18 +1,12 @@
-import time
 from typing import Tuple
 
-import jax
 import jax.numpy as jnp
 import numpy as np
-import matplotlib.pyplot as plt
 
 from candidate_response import control_pieces, simulate_controlled_system
-from constants import dim_state, dt, horizon_length_ticks, linearize_around, \
-    loss, \
-    minus_goal, n_horizons, perturbation, plus_goal, ticks_end, x_0
+from constants import dim_state, linearize_around, loss, minus_goal, plus_goal, print_current_horizon, x_0
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
-from util import get_noise
 
 
 def system_from_parameters(parameters: Tuple):
@@ -25,7 +19,15 @@ def system_from_parameters(parameters: Tuple):
     return K, f
 
 
-def main(epsilon: float, noise_measurement: jnp.ndarray):
+def main(
+        epsilon: float,
+        noise_measurement: jnp.ndarray,
+        perturbation: jnp.ndarray,
+        dt: float,
+        ticks_end: int,
+        horizon_length_ticks: int,
+        n_horizons: int
+):
     x = np.zeros((ticks_end + 1, dim_state,))
 
     x[0] = x_0
@@ -57,10 +59,10 @@ def main(epsilon: float, noise_measurement: jnp.ndarray):
     )
 
     p = np.ones((n,)) / n
-    w = jnp.ones((n,))
 
     for horizon in range(n_horizons):
-        print(horizon)
+        if print_current_horizon:
+            print(horizon)
         ts = jnp.linspace(
             start=horizon * horizon_length_ticks * dt,
             stop=(horizon + 1) * horizon_length_ticks * dt,
@@ -81,6 +83,7 @@ def main(epsilon: float, noise_measurement: jnp.ndarray):
             ts,
             x_goal,
             x[horizon_offset],
+            dt=dt,
             perturbation=perturbation[horizon_offset:(horizon + 1) * horizon_length_ticks]
         )
 
@@ -89,7 +92,7 @@ def main(epsilon: float, noise_measurement: jnp.ndarray):
 
         for i, candidate in enumerate(candidates):
             _, f_i = candidate
-            x_i = control_pieces(f_i, ts, u_horizon, x_measure)
+            x_i = control_pieces(f_i, ts, u_horizon, x_measure, dt)
             n_r[i] = np.asarray(x_measure - x_i)[1:]
 
         # Compute losses, update weights and probabilities
@@ -104,73 +107,4 @@ def main(epsilon: float, noise_measurement: jnp.ndarray):
     return p, n
 
 
-# fill noisews array with values from 0.000001 to 0.001, multiplying with factor 10
-noises = [0.1]
-epsilons = [3, 1, 0.1, 0.01]
-T_ends = [10]
-dts = [0.01]
-horizon_lengths = [0.1]
 
-# iterate over all possible combinations of the above array values by creating an array of all possible combinations in a tuple
-combinations = np.array(np.meshgrid(noises, epsilons, T_ends, dts, horizon_lengths)).T.reshape(-1, 5)
-key = jax.random.PRNGKey(5)
-
-for combination in combinations:
-    noise, epsilon, T_end, dt, horizon_length = combination
-
-    ticks_end = int(T_end / dt)
-    horizon_length_ticks = int(horizon_length / dt)
-    n_horizons = int(np.ceil(T_end / horizon_length))
-
-    p_list = []
-    n_list = []
-    epsilon_list = []
-
-    key, subkey = jax.random.split(key)
-    noise_measurement = get_noise(jnp.eye(dim_state) * noise, subkey)
-    p, n = main(epsilon, noise_measurement)
-
-    p_list.append(p)
-    n_list.append(n)
-    epsilon_list.append(epsilon)
-
-
-plt.figure(figsize=(10, 10))
-plt.suptitle(f"Probabilities for of each candidate with noise cov={noise}, T={T_end}, dt={dt}")
-for i in range(len(p_list)):
-    plt.subplot(2, 2, i + 1)
-    plt.bar(np.arange(0, n_list[i], 1), p_list[i])
-    plt.title(f"epsilon={epsilon_list[i]}")
-
-time_syst = time.time()
-plt.savefig("plots/" + str(time_syst) + ".jpg")
-plt.show()
-
-for T_end in T_ends:
-    ticks_end = int(T_end / dt)
-    horizon_length_ticks = int(horizon_length / dt)
-    n_horizons = int(np.ceil(T_end / horizon_length))
-
-    for noise in noises:
-        p_list = []
-        n_list = []
-        epsilon_list = []
-
-        for epsilon in epsilons:
-            key, subkey = jax.random.split(key)
-            noise_measurement = get_noise(jnp.eye(dim_state) * noise, subkey)
-            p, n = main(epsilon, noise_measurement)
-            print(p)
-            p_list.append(p)
-            n_list.append(n)
-            epsilon_list.append(epsilon)
-        plt.figure(figsize=(10, 10))
-        plt.suptitle(f"Probabilities for of each candidate with noise cov={noise}, T={T_end}, dt={dt}")
-        for i in range(len(p_list)):
-            plt.subplot(2, 2, i + 1)
-            plt.bar(np.arange(0, n_list[i], 1), p_list[i])
-            plt.title(f"epsilon={epsilon_list[i]}")
-
-        time_syst = time.time()
-        plt.savefig("plots/" + str(time_syst) + ".jpg")
-        plt.show()
