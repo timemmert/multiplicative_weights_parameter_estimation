@@ -13,8 +13,22 @@ import jax.numpy as jnp
 
 noises = [0.01]
 epsilons = [3., 1., 0.1, 0.01]
-T_ends = [10.]
-dts = [0.05, 0.01, 0.005, 0.0025, 0.001]
+
+#T_ends = [100.]
+#dts = [0.1]
+
+T_ends = [20.]
+dts = [0.02]
+
+#T_ends = [10.]
+#dts = [0.01]
+
+#T_ends = [5.]
+#dts = [0.005]
+
+#T_ends = [1.]
+#dts = [0.001]
+
 horizon_lengths = [0.1]
 
 result_dict = {}

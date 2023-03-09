@@ -14,7 +14,7 @@ linearize_around = jnp.array([jnp.pi, 0.])
 perturbation_on = False
 perturbation_multiplier = 0.000001 if perturbation_on else 0
 
-loss = loss_maximum_likelihood
+loss = loss_squared
 
 Q_position = 100
 

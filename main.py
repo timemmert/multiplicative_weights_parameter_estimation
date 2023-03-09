@@ -99,7 +99,7 @@ def main(
         l = loss(n_r)
         l = l / np.sum(l)
         l_sum += l
-        w = jnp.exp(- epsilon * l_sum)
+        w = jnp.exp(-epsilon * (l_sum - np.max(l_sum)))
         p = np.asarray(w / jnp.sum(w))
 
     # plt.plot(x[:, 0])
