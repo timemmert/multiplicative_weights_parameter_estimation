@@ -4,9 +4,11 @@ import jax.numpy as jnp
 import numpy as np
 
 from candidate_response import control_pieces, simulate_controlled_system
-from constants import dim_state, linearize_around, loss, minus_goal, plus_goal, print_current_horizon, x_0
+from constants import dim_state, linearize_around, loss, minus_goal, plus_goal, print_current_horizon, \
+    use_original_sim_start, x_0
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
+from losses import loss_squared_cov
 
 
 def system_from_parameters(parameters: Tuple):
@@ -59,7 +61,7 @@ def main(
     )
 
     p = np.ones((n,)) / n
-
+    global_cov_sum = np.zeros((n, dim_state, dim_state,))
     for horizon in range(n_horizons):
         if print_current_horizon:
             print(horizon)
@@ -92,14 +94,26 @@ def main(
 
         for i, candidate in enumerate(candidates):
             _, f_i = candidate
-            x_i = control_pieces(f_i, ts, u_horizon, x_measure, dt)
+            x_simulation_starts = x_horizon if use_original_sim_start else x_measure
+            x_i = control_pieces(f_i, ts, u_horizon, x_simulation_starts, dt)
             n_r[i] = np.asarray(x_measure - x_i)[1:]
 
         # Compute losses, update weights and probabilities
-        l = loss(n_r)
-        l = l / np.sum(l)
+        n_r_reshaped = n_r.reshape(n_r.shape[0], n_r.shape[1], 1, n_r.shape[2])
+        covariances = n_r_reshaped.transpose(0, 1, 3, 2) @ n_r_reshaped
+        global_cov_sum += np.sum(covariances, axis=1)
+        cov = global_cov_sum / ((horizon + 1) * horizon_length_ticks)
+
+        # cov_sample contains the chosen candidate's covariance. It is sampled from cov using p as probability
+        j = np.random.choice([i for i in range(n)], p=p)
+        cov_sample = cov[j]
+        # end test out
+
+        cov_inv = np.linalg.inv(cov_sample)
+        l = loss_squared_cov(n_r, cov_inv)
+
         l_sum += l
-        w = jnp.exp(-epsilon * (l_sum - np.max(l_sum)))
+        w = jnp.exp(- epsilon * (l_sum - min(l_sum)))
         p = np.asarray(w / jnp.sum(w))
 
     # plt.plot(x[:, 0])

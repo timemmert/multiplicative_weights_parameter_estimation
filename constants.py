@@ -19,3 +19,5 @@ loss = loss_squared
 Q_position = 100
 
 print_current_horizon = False
+
+use_original_sim_start = True

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import jax.numpy as jnp
 
 noises = [0.01]
-epsilons = [3., 1., 0.1, 0.01]
+epsilons = [1, 0.05, 0.01, 0.00001]
 
 #T_ends = [100.]
 #dts = [0.1]
