@@ -1,6 +1,6 @@
 import numpy as np
 
-eps = 1e-8
+eps = 1e-6
 
 
 def loss_maximum_likelihood(n_r):
@@ -8,7 +8,7 @@ def loss_maximum_likelihood(n_r):
     n_r_reshaped = n_r.reshape(n_r.shape[0], n_r.shape[1], 1, n_r.shape[2])
     covariances = n_r_reshaped.transpose(0, 1, 3, 2) @ n_r_reshaped
     covariances_sum = np.sum(covariances, axis=1)  # sum along t axis
-    loss = np.log(np.linalg.det(covariances_sum) + eps)
+    loss = np.log(np.linalg.det(covariances_sum + eps) + eps)
     return loss - min(loss)
 
 

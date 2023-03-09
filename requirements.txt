@@ -1,4 +1,7 @@
 scipy
-jax
+jax~=0.4.5
 jaxlib
-control
+control~=0.9.3.post2
+
+numpy~=1.24.2
+matplotlib

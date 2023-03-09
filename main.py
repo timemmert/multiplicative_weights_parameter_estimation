@@ -1,4 +1,3 @@
-import json
 import time
 from typing import Tuple
 
@@ -6,30 +5,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 
 from candidate_response import control_pieces, simulate_controlled_system
-from constants import Q_position, T_end, cov_measurement, dim_state, dt, horizon_length, horizon_length_ticks, \
-    key_measurement_noise, linearize_around, loss, measurement_noise_on, \
-    minus_goal, n_horizons, noise_multiplier, perturbation, plus_goal, ticks_end, x_0
+from constants import dim_state, dt, horizon_length_ticks, linearize_around, \
+    loss, \
+    minus_goal, n_horizons, perturbation, plus_goal, ticks_end, x_0
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
-
-mpl.use('TkAgg')
-
-simulation_metadata = {
-    "measurement": {
-        "measurement_covariance": cov_measurement.tolist(),
-        "measurement_noise_on": measurement_noise_on,
-    },
-    "horizon": {
-        "horizon_length": horizon_length,
-        "horizon_length_ticks": horizon_length_ticks
-    },
-    "dt": dt,
-    "T_end": T_end,
-    "ticks_end": ticks_end
-}
+from util import get_noise
 
 
 def system_from_parameters(parameters: Tuple):
@@ -42,7 +25,7 @@ def system_from_parameters(parameters: Tuple):
     return K, f
 
 
-def main():
+def main(epsilon: float, noise_measurement: jnp.ndarray):
     x = np.zeros((ticks_end + 1, dim_state,))
 
     x[0] = x_0
@@ -53,11 +36,12 @@ def main():
     g = 9.81
     m = 1
     l = 1
+    l_sum = 0
     b = .1
     true_parameters = (g, m, l, b, dt,)
 
-    n_l = 5
-    n_m = 5
+    n_l = 3
+    n_m = 3
 
     n = n_l * n_m
     candidates = []
@@ -74,11 +58,7 @@ def main():
 
     p = np.ones((n,)) / n
     w = jnp.ones((n,))
-    epsilon = jnp.sqrt(8 * jnp.log(n) / ticks_end)
 
-    noise_measurement = jnp.zeros(
-        (ticks_end + 1, dim_state,)) if not measurement_noise_on else jax.random.multivariate_normal(
-        key=key_measurement_noise, mean=jnp.zeros((dim_state,)), cov=cov_measurement, shape=(ticks_end + 1,))
     for horizon in range(n_horizons):
         print(horizon)
         ts = jnp.linspace(
@@ -115,20 +95,82 @@ def main():
         # Compute losses, update weights and probabilities
         l = loss(n_r)
         l = l / np.sum(l)
-        w *= jnp.exp(- epsilon * l)
+        l_sum += l
+        w = jnp.exp(- epsilon * l_sum)
         p = np.asarray(w / jnp.sum(w))
 
-    plt.plot(x[:, 0])
-    plt.show()
+    # plt.plot(x[:, 0])
+    # plt.show()
     return p, n
 
 
-p, n = main()
-print(p)
-plt.bar(np.arange(0, n, 1), p)
-plt.title(f"T={T_end}, dt={dt}, horizon={horizon_length}, meas_noise={noise_multiplier}, Q_position={Q_position}")
+# fill noisews array with values from 0.000001 to 0.001, multiplying with factor 10
+noises = [0.1]
+epsilons = [3, 1, 0.1, 0.01]
+T_ends = [10]
+dts = [0.01]
+horizon_lengths = [0.1]
+
+# iterate over all possible combinations of the above array values by creating an array of all possible combinations in a tuple
+combinations = np.array(np.meshgrid(noises, epsilons, T_ends, dts, horizon_lengths)).T.reshape(-1, 5)
+key = jax.random.PRNGKey(5)
+
+for combination in combinations:
+    noise, epsilon, T_end, dt, horizon_length = combination
+
+    ticks_end = int(T_end / dt)
+    horizon_length_ticks = int(horizon_length / dt)
+    n_horizons = int(np.ceil(T_end / horizon_length))
+
+    p_list = []
+    n_list = []
+    epsilon_list = []
+
+    key, subkey = jax.random.split(key)
+    noise_measurement = get_noise(jnp.eye(dim_state) * noise, subkey)
+    p, n = main(epsilon, noise_measurement)
+
+    p_list.append(p)
+    n_list.append(n)
+    epsilon_list.append(epsilon)
+
+
+plt.figure(figsize=(10, 10))
+plt.suptitle(f"Probabilities for of each candidate with noise cov={noise}, T={T_end}, dt={dt}")
+for i in range(len(p_list)):
+    plt.subplot(2, 2, i + 1)
+    plt.bar(np.arange(0, n_list[i], 1), p_list[i])
+    plt.title(f"epsilon={epsilon_list[i]}")
+
 time_syst = time.time()
 plt.savefig("plots/" + str(time_syst) + ".jpg")
 plt.show()
-with open("plots/" + str(time_syst) + ".json", "w") as fp:
-    json.dump(simulation_metadata, fp)
+
+for T_end in T_ends:
+    ticks_end = int(T_end / dt)
+    horizon_length_ticks = int(horizon_length / dt)
+    n_horizons = int(np.ceil(T_end / horizon_length))
+
+    for noise in noises:
+        p_list = []
+        n_list = []
+        epsilon_list = []
+
+        for epsilon in epsilons:
+            key, subkey = jax.random.split(key)
+            noise_measurement = get_noise(jnp.eye(dim_state) * noise, subkey)
+            p, n = main(epsilon, noise_measurement)
+            print(p)
+            p_list.append(p)
+            n_list.append(n)
+            epsilon_list.append(epsilon)
+        plt.figure(figsize=(10, 10))
+        plt.suptitle(f"Probabilities for of each candidate with noise cov={noise}, T={T_end}, dt={dt}")
+        for i in range(len(p_list)):
+            plt.subplot(2, 2, i + 1)
+            plt.bar(np.arange(0, n_list[i], 1), p_list[i])
+            plt.title(f"epsilon={epsilon_list[i]}")
+
+        time_syst = time.time()
+        plt.savefig("plots/" + str(time_syst) + ".jpg")
+        plt.show()
