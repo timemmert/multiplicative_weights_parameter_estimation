@@ -8,7 +8,7 @@ from constants import dim_state, linearize_around, loss, minus_goal, plus_goal, 
     use_original_sim_start, x_0
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
-from losses import loss_squared_cov
+from losses import loss_squared_cov, probabs_squared_individual_cov
 
 
 def system_from_parameters(parameters: Tuple):
@@ -60,7 +60,7 @@ def main(
         parameters=true_parameters,
     )
 
-    p = np.ones((n,)) / n
+    p_mult_weights = np.ones((n,)) / n
     global_cov_sum = np.zeros((n, dim_state, dim_state,))
     for horizon in range(n_horizons):
         if print_current_horizon:
@@ -105,7 +105,7 @@ def main(
         cov = global_cov_sum / ((horizon + 1) * horizon_length_ticks)
 
         # cov_sample contains the chosen candidate's covariance. It is sampled from cov using p as probability
-        j = np.random.choice([i for i in range(n)], p=p)
+        j = np.random.choice([i for i in range(n)], p=p_mult_weights)
         cov_sample = cov[j]
         # end test out
 
@@ -114,11 +114,11 @@ def main(
 
         l_sum += l
         w = jnp.exp(- epsilon * (l_sum - min(l_sum)))
-        p = np.asarray(w / jnp.sum(w))
+        p_mult_weights = np.asarray(w / jnp.sum(w))
 
     # plt.plot(x[:, 0])
     # plt.show()
-    return p, n
+    return p_mult_weights, n
 
 
 
