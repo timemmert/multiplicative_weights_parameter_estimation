@@ -1,7 +1,8 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import jax.numpy as jnp
 import numpy as np
+from numpy import argmax
 
 from candidate_response import control_pieces, simulate_controlled_system
 from constants import dim_state, linearize_around, loss, minus_goal, plus_goal, print_current_horizon, \
@@ -28,7 +29,9 @@ def main(
         dt: float,
         ticks_end: int,
         horizon_length_ticks: int,
-        n_horizons: int
+        n_horizons: int,
+        epsilon_stop: Optional[float] = None,
+        use_best_covariance: bool = False,  # if False, sample it
 ):
     x = np.zeros((ticks_end + 1, dim_state,))
 
@@ -55,13 +58,13 @@ def main(
 
             K, f = system_from_parameters(parameters=parameters)
             candidates.append((K, f,))
-
     K_true, f_true = system_from_parameters(
         parameters=true_parameters,
     )
 
     p_mult_weights = np.ones((n,)) / n
     global_cov_sum = np.zeros((n, dim_state, dim_state,))
+    time_convergence = None
     for horizon in range(n_horizons):
         if print_current_horizon:
             print(horizon)
@@ -105,8 +108,11 @@ def main(
         cov = global_cov_sum / ((horizon + 1) * horizon_length_ticks)
 
         # cov_sample contains the chosen candidate's covariance. It is sampled from cov using p as probability
-        j = np.random.choice([i for i in range(n)], p=p_mult_weights)
-        cov_sample = cov[j]
+        if not use_best_covariance:
+            j = np.random.choice([i for i in range(n)], p=p_mult_weights)
+            cov_sample = cov[j]
+        else:
+            cov_sample = cov[argmax(p_mult_weights)]
         # end test out
 
         cov_inv = np.linalg.inv(cov_sample)
@@ -116,9 +122,11 @@ def main(
         w = jnp.exp(- epsilon * (l_sum - min(l_sum)))
         p_mult_weights = np.asarray(w / jnp.sum(w))
 
-    # plt.plot(x[:, 0])
-    # plt.show()
-    return p_mult_weights, n
+        if epsilon_stop and max(p_mult_weights) > 1 - epsilon_stop:
+            time_convergence = (horizon + 1) * horizon_length_ticks * dt
+            break
+
+    return p_mult_weights, n, time_convergence
 
 
 

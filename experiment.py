@@ -40,7 +40,15 @@ for i, combination in enumerate(combinations):
     perturbation = get_noise(jnp.eye(dim_state) * perturbation_multiplier, subkey_perturbation, ticks_end=ticks_end)
 
     t_start = time.time()
-    p, n = main(epsilon, noise_measurement, perturbation, dt=dt, ticks_end=ticks_end, horizon_length_ticks=horizon_length_ticks, n_horizons=n_horizons)
+    p, n, _ = main(
+        epsilon,
+        noise_measurement,
+        perturbation,
+        dt=dt,
+        ticks_end=ticks_end,
+        horizon_length_ticks=horizon_length_ticks,
+        n_horizons=n_horizons,
+    )
     time_sum += (time.time() - t_start)
     eta = (len(combinations) - i - 1) * time_sum / (i + 1)
     print(eta)
