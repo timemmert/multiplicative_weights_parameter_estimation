@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import jax
 import jax.numpy as jnp
 
 # damped single pendulum: http://underactuated.mit.edu/pend.html
@@ -41,6 +42,7 @@ def K_matrix(A_jax: jnp.ndarray, B_jax: jnp.ndarray):
 def build_f(parameters: Tuple):
     g, m, l, b, dt = parameters
 
+    @jax.jit
     def f(x, t, u):
         tick = jnp.array(t / dt, int)
         return jnp.array([
@@ -48,7 +50,7 @@ def build_f(parameters: Tuple):
             -b / (m * l ** 2) * x[1] - g / l * jnp.sin(x[0]) + 1 / (m * l ** 2) * u[tick]
         ])
 
-    return lambda x, t, u: f(x, t, u)
+    return f
 
 
 def system_from_parameters(parameters: Tuple):

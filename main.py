@@ -4,12 +4,12 @@ import jax.numpy as jnp
 import numpy as np
 from numpy import argmax
 
-from candidate_response import control_pieces, simulate_controlled_system
-from constants import dim_state, linearize_around, loss, minus_goal, plus_goal, print_current_horizon, \
+from candidate_response import candidate_control_function, simulate_control_system_function
+from constants import dim_state, linearize_around, minus_goal, plus_goal, print_current_horizon, \
     use_original_sim_start, x_0
 
 from dynamical_system import A_matrix, B_matrix, K_matrix, build_f
-from losses import loss_squared_cov, probabs_squared_individual_cov
+from losses import loss_squared_cov
 
 
 def system_from_parameters(parameters: Tuple):
@@ -30,8 +30,10 @@ def main(
         ticks_end: int,
         horizon_length_ticks: int,
         n_horizons: int,
-        epsilon_stop: Optional[float] = None,
+        threshold_stop: Optional[float] = None,
         use_best_covariance: bool = False,  # if False, sample it
+        n_l: int = 3,
+        n_m: int = 3,
 ):
     x = np.zeros((ticks_end + 1, dim_state,))
 
@@ -47,20 +49,24 @@ def main(
     b = .1
     true_parameters = (g, m, l, b, dt,)
 
-    n_l = 3
-    n_m = 3
-
     n = n_l * n_m
     candidates = []
+
     for m_candidate in np.linspace(0.8, 1.2, n_m):
+        if n_m == 1:
+            m_candidate = m
         for l_candidate in np.linspace(0.8, 1.2, n_l):
             parameters = (g, m_candidate, l_candidate, b, dt,)
 
             K, f = system_from_parameters(parameters=parameters)
-            candidates.append((K, f,))
+            ctrl_fn = candidate_control_function(f)
+            candidates.append((K, f, ctrl_fn,))
+
     K_true, f_true = system_from_parameters(
         parameters=true_parameters,
     )
+
+    simulate_control_system_fn = simulate_control_system_function(f_true)
 
     p_mult_weights = np.ones((n,)) / n
     global_cov_sum = np.zeros((n, dim_state, dim_state,))
@@ -82,9 +88,8 @@ def main(
                 x_goal = minus_goal
             else:
                 x_goal = plus_goal
-        x_horizon, u_horizon = simulate_controlled_system(
+        x_horizon, u_horizon = simulate_control_system_fn(
             K_true,
-            f_true,
             ts,
             x_goal,
             x[horizon_offset],
@@ -96,9 +101,9 @@ def main(
         x_measure = x_horizon + noise_measurement[horizon_offset:((horizon + 1) * horizon_length_ticks) + 1]
 
         for i, candidate in enumerate(candidates):
-            _, f_i = candidate
+            _, f_i, ctrl_fn = candidate
             x_simulation_starts = x_horizon if use_original_sim_start else x_measure
-            x_i = control_pieces(f_i, ts, u_horizon, x_simulation_starts, dt)
+            x_i = ctrl_fn(ts, u_horizon, x_simulation_starts, dt)
             n_r[i] = np.asarray(x_measure - x_i)[1:]
 
         # Compute losses, update weights and probabilities
@@ -107,13 +112,11 @@ def main(
         global_cov_sum += np.sum(covariances, axis=1)
         cov = global_cov_sum / ((horizon + 1) * horizon_length_ticks)
 
-        # cov_sample contains the chosen candidate's covariance. It is sampled from cov using p as probability
         if not use_best_covariance:
             j = np.random.choice([i for i in range(n)], p=p_mult_weights)
             cov_sample = cov[j]
         else:
             cov_sample = cov[argmax(p_mult_weights)]
-        # end test out
 
         cov_inv = np.linalg.inv(cov_sample)
         l = loss_squared_cov(n_r, cov_inv)
@@ -122,7 +125,7 @@ def main(
         w = jnp.exp(- epsilon * (l_sum - min(l_sum)))
         p_mult_weights = np.asarray(w / jnp.sum(w))
 
-        if epsilon_stop and max(p_mult_weights) > 1 - epsilon_stop:
+        if threshold_stop and max(p_mult_weights) > 1 - threshold_stop:
             time_convergence = (horizon + 1) * horizon_length_ticks * dt
             break
 
